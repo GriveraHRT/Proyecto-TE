@@ -1,4 +1,3 @@
-import streamlit as pd
 import streamlit as st
 import pandas as pd
 import io
@@ -35,7 +34,7 @@ def procesar_datos(file):
     for col in columnas_requeridas:
         if col not in df.columns:
             st.error(f"El archivo no contiene la columna requerida: '{col}'")
-            return None, None, None, None
+            return None, None, None, None, None
 
     # Clonar dataframe para no alterar el original y parsear fechas de forma segura
     df_proc = df.copy()
@@ -153,7 +152,6 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
             
         r_idx = 10
         for _, row in summary_user.iterrows():
-            # CORRECCIÓN AQUÍ: Llamadas explícitas por nombre de columna
             ws_resumen.cell(row=r_idx, column=2, value=row['Usuario de Extracción']).alignment = align_left
             ws_resumen.cell(row=r_idx, column=3, value=row['Cantidad de Muestras']).number_format = "#,##0"
             ws_resumen.cell(row=r_idx, column=3).alignment = align_right
@@ -183,7 +181,6 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
             
         r_idx = start_r_proc + 2
         for _, row in summary_proc.iterrows():
-            # CORRECCIÓN AQUÍ: Llamadas explícitas por nombre de columna
             ws_resumen.cell(row=r_idx, column=2, value=row['Procedencia / Servicio']).alignment = align_left
             ws_resumen.cell(row=r_idx, column=3, value=row['Cantidad']).number_format = "#,##0"
             ws_resumen.cell(row=r_idx, column=3).alignment = align_right
@@ -246,3 +243,30 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
             
     wb.save(output)
     return output.getvalue()
+
+if uploaded_file is not None:
+    with st.spinner("Procesando datos y estructurando matrices lógicas..."):
+        df_details, summary_user, summary_proc, total_m, prom_g = procesar_datos(uploaded_file)
+        
+    if df_details is not None:
+        st.success("¡Datos calculados con éxito utilizando las marcas de tiempo base!")
+        
+        # Mostrar métricas en la interfaz
+        m1, m2 = st.columns(2)
+        m1.metric("Total Órdenes Analizadas", f"{total_m:,}")
+        m2.metric("Tiempo Promedio General", f"{prom_g:.2f} minutos")
+        
+        # Vistas previas en la app
+        st.subheader("📊 Vista Previa de Tiempos por Usuario Extractor")
+        st.dataframe(summary_user, use_container_width=True)
+        
+        # Generar el binario del archivo Excel estructurado
+        excel_data = generar_excel_profesional(df_details, summary_user, summary_proc, total_m, prom_g)
+        
+        # Botón para descargar el Excel completo
+        st.download_button(
+            label="📥 Descargar Reporte Corporativo Excel (.xlsx)",
+            data=excel_data,
+            file_name="Reporte_Tiempos_Laboratorio.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
