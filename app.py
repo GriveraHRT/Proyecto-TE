@@ -14,9 +14,12 @@ st.set_page_config(
 
 st.title("🧪 Analizador de Tiempos de Operación de Laboratorio")
 st.markdown("""
-Esta aplicación procesa los archivos de extracción de muestras, calcula el **Tiempo de Espera Promedio General** 
-(entre Ingreso y Extracción) y el **Tiempo Promedio de Punción General** (entre Llamado y Extracción) a partir de las 
-marcas de tiempo base, y genera un reporte gerencial en formato Excel.
+Esta aplicación procesa los archivos de extracción de muestras, calcula los tiempos del proceso:
+- **Tiempo de Espera en Sala**: entre Ingreso y Llamado.
+- **Tiempo de Punción**: entre Llamado y Extracción.
+- **Tiempo de Espera Total**: entre Ingreso y Extracción.
+
+Además, genera un reporte gerencial estructurado en formato Excel.
 """)
 
 # Componente de carga de archivos
@@ -45,21 +48,23 @@ def procesar_datos(file):
 
     if not col_ingreso or not col_extraccion:
         st.error("El archivo debe contener al menos las columnas 'FECHA Y HORA DE INGRESO' y 'FECHA Y HORA DE EXTRACCIÓN'.")
-        return None, None, None, None, None, None, None
+        return None, None, None, None, None, None, None, None
 
     df_proc = df.copy()
     df_proc['INGRESO_DT'] = pd.to_datetime(df_proc[col_ingreso], dayfirst=True, errors='coerce', format='mixed')
     df_proc['EXTRACCION_DT'] = pd.to_datetime(df_proc[col_extraccion], dayfirst=True, errors='coerce', format='mixed')
     
-    # Calcular Tiempo de Espera (Ingreso -> Extracción) en minutos
-    df_proc['TIEMPO DE ESPERA (MINUTOS)'] = (df_proc['EXTRACCION_DT'] - df_proc['INGRESO_DT']).dt.total_seconds() / 60.0
+    # Tiempo de Espera Total (Ingreso -> Extracción) en minutos
+    df_proc['TIEMPO DE ESPERA TOTAL (MINUTOS)'] = (df_proc['EXTRACCION_DT'] - df_proc['INGRESO_DT']).dt.total_seconds() / 60.0
     
-    # Calcular Tiempo de Punción (Llamado -> Extracción) si la columna existe
+    # Si la columna LLAMADO existe, calcular Espera en Sala y Punción
     if col_llamado:
         df_proc['LLAMADO_DT'] = pd.to_datetime(df_proc[col_llamado], dayfirst=True, errors='coerce', format='mixed')
+        df_proc['TIEMPO DE ESPERA EN SALA (MINUTOS)'] = (df_proc['LLAMADO_DT'] - df_proc['INGRESO_DT']).dt.total_seconds() / 60.0
         df_proc['TIEMPO DE PUNCIÓN (MINUTOS)'] = (df_proc['EXTRACCION_DT'] - df_proc['LLAMADO_DT']).dt.total_seconds() / 60.0
     else:
         df_proc['LLAMADO_DT'] = pd.NaT
+        df_proc['TIEMPO DE ESPERA EN SALA (MINUTOS)'] = None
         df_proc['TIEMPO DE PUNCIÓN (MINUTOS)'] = None
 
     # Métricas generales
@@ -69,7 +74,8 @@ def procesar_datos(file):
     col_paciente = 'RUT' if 'RUT' in df_proc.columns else ('ORDEN' if 'ORDEN' in df_proc.columns else None)
     total_pacientes = df_proc[col_paciente].nunique() if col_paciente else total_muestras
 
-    promedio_espera_general = df_proc['TIEMPO DE ESPERA (MINUTOS)'].mean()
+    promedio_espera_total_general = df_proc['TIEMPO DE ESPERA TOTAL (MINUTOS)'].mean()
+    promedio_espera_sala_general = df_proc['TIEMPO DE ESPERA EN SALA (MINUTOS)'].mean() if col_llamado else None
     promedio_puncion_general = df_proc['TIEMPO DE PUNCIÓN (MINUTOS)'].mean() if col_llamado else None
     
     # Identificar columna de usuario extractor
@@ -100,29 +106,39 @@ def procesar_datos(file):
     # Resumen por procedencia
     col_proc = 'PROCEDENCIA' if 'PROCEDENCIA' in df_proc.columns else None
     if col_proc:
-        agg_dict = {
-            'cant_muestras': (col_proc, 'count'),
-            'cant_pacientes': (col_paciente, 'nunique') if col_paciente else (col_proc, 'count'),
-            'tiempo_espera_prom': ('TIEMPO DE ESPERA (MINUTOS)', 'mean')
-        }
-        cols_names = ['Procedencia / Servicio', 'Cantidad de Muestras', 'Cantidad de Pacientes', 'Tiempo Promedio de Espera (Minutos)']
-        
         if col_llamado:
-            agg_dict['tiempo_puncion_prom'] = ('TIEMPO DE PUNCIÓN (MINUTOS)', 'mean')
-            cols_names.append('Tiempo Promedio de Punción (Minutos)')
-            
-        summary_proc = df_proc.groupby(col_proc).agg(**agg_dict).reset_index()
-        summary_proc.columns = cols_names
-        summary_proc = summary_proc.sort_values(by='Tiempo Promedio de Espera (Minutos)', ascending=False)
+            summary_proc = df_proc.groupby(col_proc).agg(
+                cant_muestras=(col_proc, 'count'),
+                cant_pacientes=(col_paciente, 'nunique') if col_paciente else (col_proc, 'count'),
+                tiempo_espera_sala_prom=('TIEMPO DE ESPERA EN SALA (MINUTOS)', 'mean'),
+                tiempo_puncion_prom=('TIEMPO DE PUNCIÓN (MINUTOS)', 'mean'),
+                tiempo_espera_total_prom=('TIEMPO DE ESPERA TOTAL (MINUTOS)', 'mean')
+            ).reset_index()
+            summary_proc.columns = [
+                'Procedencia / Servicio', 'Cantidad de Muestras', 'Cantidad de Pacientes', 
+                'Tiempo Promedio Espera en Sala (Minutos)', 'Tiempo Promedio Punción (Minutos)', 'Tiempo Promedio Espera Total (Minutos)'
+            ]
+            summary_proc = summary_proc.sort_values(by='Tiempo Promedio Espera Total (Minutos)', ascending=False)
+        else:
+            summary_proc = df_proc.groupby(col_proc).agg(
+                cant_muestras=(col_proc, 'count'),
+                cant_pacientes=(col_paciente, 'nunique') if col_paciente else (col_proc, 'count'),
+                tiempo_espera_total_prom=('TIEMPO DE ESPERA TOTAL (MINUTOS)', 'mean')
+            ).reset_index()
+            summary_proc.columns = [
+                'Procedencia / Servicio', 'Cantidad de Muestras', 'Cantidad de Pacientes', 
+                'Tiempo Promedio Espera Total (Minutos)'
+            ]
+            summary_proc = summary_proc.sort_values(by='Tiempo Promedio Espera Total (Minutos)', ascending=False)
     else:
         summary_proc = pd.DataFrame()
         
     # Eliminar columnas temporales de datetime antes de exportar
     df_detalles = df_proc.drop(columns=['INGRESO_DT', 'EXTRACCION_DT', 'LLAMADO_DT'], errors='ignore')
     
-    return df_detalles, summary_user, summary_proc, total_muestras, total_pacientes, promedio_espera_general, promedio_puncion_general
+    return df_detalles, summary_user, summary_proc, total_muestras, total_pacientes, promedio_espera_sala_general, promedio_puncion_general, promedio_espera_total_general
 
-def generar_excel_profesional(df_details, summary_user, summary_proc, total_muestras, total_pacientes, promedio_espera_general, promedio_puncion_general):
+def generar_excel_profesional(df_details, summary_user, summary_proc, total_muestras, total_pacientes, promedio_espera_sala_general, promedio_puncion_general, promedio_espera_total_general):
     output = io.BytesIO()
     wb = openpyxl.Workbook()
     
@@ -155,8 +171,7 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
     ws_resumen["B2"] = "REPORTE DE TIEMPOS DE OPERACIÓN - LABORATORIO"
     ws_resumen["B2"].font = font_title
     
-    # Grid 2x2 para tarjetas KPI (visibles en columnas B..E)
-    # Fila 1 KPI: Muestras y Pacientes
+    # Fila 1 KPI: Muestras y Pacientes (Columnas B..C y D..E)
     ws_resumen.merge_cells("B4:C4")
     ws_resumen["B4"] = "TOTAL MUESTRAS PROCESADAS"
     ws_resumen["B4"].font = font_kpi_lbl
@@ -183,21 +198,22 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
     ws_resumen["D5"].fill = kpi_fill
     ws_resumen["D5"].number_format = "#,##0"
     
-    # Fila 2 KPI: Tiempos Promedio Generales (Espera y Punción)
-    ws_resumen.merge_cells("B7:C7")
-    ws_resumen["B7"] = "TIEMPO ESPERA PROMEDIO GENERAL"
-    ws_resumen["B7"].font = font_kpi_lbl
-    ws_resumen["B7"].alignment = align_center
-    ws_resumen["B7"].fill = kpi_fill
-    
-    ws_resumen.merge_cells("B8:C8")
-    ws_resumen["B8"] = promedio_espera_general if promedio_espera_general is not None else 0.0
-    ws_resumen["B8"].font = font_kpi_val
-    ws_resumen["B8"].alignment = align_center
-    ws_resumen["B8"].fill = kpi_fill
-    ws_resumen["B8"].number_format = "0.00"
-    
-    if promedio_puncion_general is not None:
+    # Fila 2 KPI: Tiempos Promedio Generales (Espera en Sala, Punción y Espera Total)
+    if promedio_espera_sala_general is not None and promedio_puncion_general is not None:
+        # 3 recuadros en fila 7: B7:C7, D7:E7, F7:G7
+        ws_resumen.merge_cells("B7:C7")
+        ws_resumen["B7"] = "TIEMPO ESPERA EN SALA PROMEDIO"
+        ws_resumen["B7"].font = font_kpi_lbl
+        ws_resumen["B7"].alignment = align_center
+        ws_resumen["B7"].fill = kpi_fill
+        
+        ws_resumen.merge_cells("B8:C8")
+        ws_resumen["B8"] = promedio_espera_sala_general
+        ws_resumen["B8"].font = font_kpi_val
+        ws_resumen["B8"].alignment = align_center
+        ws_resumen["B8"].fill = kpi_fill
+        ws_resumen["B8"].number_format = "0.00"
+        
         ws_resumen.merge_cells("D7:E7")
         ws_resumen["D7"] = "TIEMPO PUNCIÓN PROMEDIO GENERAL"
         ws_resumen["D7"].font = font_kpi_lbl
@@ -211,12 +227,38 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
         ws_resumen["D8"].fill = kpi_fill
         ws_resumen["D8"].number_format = "0.00"
 
+        ws_resumen.merge_cells("F7:G7")
+        ws_resumen["F7"] = "TIEMPO ESPERA TOTAL PROMEDIO"
+        ws_resumen["F7"].font = font_kpi_lbl
+        ws_resumen["F7"].alignment = align_center
+        ws_resumen["F7"].fill = kpi_fill
+        
+        ws_resumen.merge_cells("F8:G8")
+        ws_resumen["F8"] = promedio_espera_total_general
+        ws_resumen["F8"].font = font_kpi_val
+        ws_resumen["F8"].alignment = align_center
+        ws_resumen["F8"].fill = kpi_fill
+        ws_resumen["F8"].number_format = "0.00"
+    else:
+        ws_resumen.merge_cells("B7:C7")
+        ws_resumen["B7"] = "TIEMPO ESPERA TOTAL PROMEDIO"
+        ws_resumen["B7"].font = font_kpi_lbl
+        ws_resumen["B7"].alignment = align_center
+        ws_resumen["B7"].fill = kpi_fill
+        
+        ws_resumen.merge_cells("B8:C8")
+        ws_resumen["B8"] = promedio_espera_total_general if promedio_espera_total_general is not None else 0.0
+        ws_resumen["B8"].font = font_kpi_val
+        ws_resumen["B8"].alignment = align_center
+        ws_resumen["B8"].fill = kpi_fill
+        ws_resumen["B8"].number_format = "0.00"
+
     # Aplicar bordes a recuadros KPI
     for r in [4, 5]:
         for c in [2, 3, 4, 5]:
             ws_resumen.cell(row=r, column=c).border = border_all
     for r in [7, 8]:
-        cols = [2, 3, 4, 5] if promedio_puncion_general is not None else [2, 3]
+        cols = [2, 3, 4, 5, 6, 7] if (promedio_espera_sala_general is not None) else [2, 3]
         for c in cols:
             ws_resumen.cell(row=r, column=c).border = border_all
             
@@ -273,14 +315,10 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
             ws_resumen.cell(row=r_idx, column=4, value=row[summary_proc.columns[2]]).number_format = "#,##0"
             ws_resumen.cell(row=r_idx, column=4).alignment = align_right
             
-            cell_v1 = ws_resumen.cell(row=r_idx, column=5, value=row[summary_proc.columns[3]])
-            cell_v1.number_format = "0.00"
-            cell_v1.alignment = align_right
-            
-            if len(summary_proc.columns) > 4:
-                cell_v2 = ws_resumen.cell(row=r_idx, column=6, value=row[summary_proc.columns[4]])
-                cell_v2.number_format = "0.00"
-                cell_v2.alignment = align_right
+            for c_col in range(3, len(summary_proc.columns)):
+                cell_v = ws_resumen.cell(row=r_idx, column=2+c_col, value=row[summary_proc.columns[c_col]])
+                cell_v.number_format = "0.00"
+                cell_v.alignment = align_right
             
             for col_c in range(2, 2 + len(summary_proc.columns)):
                 c = ws_resumen.cell(row=r_idx, column=col_c)
@@ -340,24 +378,25 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
 
 if uploaded_file is not None:
     with st.spinner("Procesando datos y calculando métricas..."):
-        df_details, summary_user, summary_proc, total_m, total_p, prom_esp, prom_punc = procesar_datos(uploaded_file)
+        df_details, summary_user, summary_proc, total_m, total_p, prom_sala, prom_punc, prom_total = procesar_datos(uploaded_file)
         
     if df_details is not None:
         st.success("¡Datos procesados y calculados con éxito a partir de las marcas de tiempo!")
         
         # Mostrar tarjetas métricas en la interfaz
         st.subheader("📌 Indicadores Generales de Operación")
-        if prom_punc is not None:
-            c1, c2, c3, c4 = st.columns(4)
+        if prom_punc is not None and prom_sala is not None:
+            c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Total Muestras Procesadas", f"{total_m:,}")
             c2.metric("Total Pacientes Atendidos", f"{total_p:,}")
-            c3.metric("Tiempo de Espera Promedio General", f"{prom_esp:.2f} min")
-            c4.metric("Tiempo Promedio de Punción General", f"{prom_punc:.2f} min")
+            c3.metric("Tiempo Espera en Sala Promedio", f"{prom_sala:.2f} min", help="Ingreso -> Llamado")
+            c4.metric("Tiempo Punción Promedio General", f"{prom_punc:.2f} min", help="Llamado -> Extracción")
+            c5.metric("Tiempo Espera Total Promedio", f"{prom_total:.2f} min", help="Ingreso -> Extracción")
         else:
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Muestras Procesadas", f"{total_m:,}")
             c2.metric("Total Pacientes Atendidos", f"{total_p:,}")
-            c3.metric("Tiempo de Espera Promedio General", f"{prom_esp:.2f} min")
+            c3.metric("Tiempo Espera Total Promedio", f"{prom_total:.2f} min", help="Ingreso -> Extracción")
         
         # Vistas previas en la app
         st.subheader("📊 Vista Previa de Tiempos por Usuario Extractor")
@@ -367,7 +406,7 @@ if uploaded_file is not None:
         st.dataframe(summary_proc, use_container_width=True)
         
         # Generar el binario del archivo Excel estructurado
-        excel_data = generar_excel_profesional(df_details, summary_user, summary_proc, total_m, total_p, prom_esp, prom_punc)
+        excel_data = generar_excel_profesional(df_details, summary_user, summary_proc, total_m, total_p, prom_sala, prom_punc, prom_total)
         
         # Botón para descargar el Excel completo
         st.download_button(
