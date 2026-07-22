@@ -14,8 +14,8 @@ st.set_page_config(
 
 st.title("🧪 Analizador de Tiempos de Operación de Laboratorio")
 st.markdown("""
-Esta aplicación procesa los archivos de extracción de muestras, calcula el **Tiempo de Espera Promedio** 
-(entre Ingreso y Extracción) y el **Tiempo de Punción Promedio** (entre Llamado y Extracción) a partir de las 
+Esta aplicación procesa los archivos de extracción de muestras, calcula el **Tiempo de Espera Promedio General** 
+(entre Ingreso y Extracción) y el **Tiempo Promedio de Punción General** (entre Llamado y Extracción) a partir de las 
 marcas de tiempo base, y genera un reporte gerencial en formato Excel.
 """)
 
@@ -155,7 +155,8 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
     ws_resumen["B2"] = "REPORTE DE TIEMPOS DE OPERACIÓN - LABORATORIO"
     ws_resumen["B2"].font = font_title
     
-    # Tarjeta KPI 1: Total Muestras
+    # Grid 2x2 para tarjetas KPI (visibles en columnas B..E)
+    # Fila 1 KPI: Muestras y Pacientes
     ws_resumen.merge_cells("B4:C4")
     ws_resumen["B4"] = "TOTAL MUESTRAS PROCESADAS"
     ws_resumen["B4"].font = font_kpi_lbl
@@ -169,72 +170,64 @@ def generar_excel_profesional(df_details, summary_user, summary_proc, total_mues
     ws_resumen["B5"].fill = kpi_fill
     ws_resumen["B5"].number_format = "#,##0"
     
-    # Tarjeta KPI 2: Total Pacientes Atendidos
-    ws_resumen.merge_cells("E4:F4")
-    ws_resumen["E4"] = "TOTAL PACIENTES ATENDIDOS"
-    ws_resumen["E4"].font = font_kpi_lbl
-    ws_resumen["E4"].alignment = align_center
-    ws_resumen["E4"].fill = kpi_fill
+    ws_resumen.merge_cells("D4:E4")
+    ws_resumen["D4"] = "TOTAL PACIENTES ATENDIDOS"
+    ws_resumen["D4"].font = font_kpi_lbl
+    ws_resumen["D4"].alignment = align_center
+    ws_resumen["D4"].fill = kpi_fill
     
-    ws_resumen.merge_cells("E5:F5")
-    ws_resumen["E5"] = total_pacientes
-    ws_resumen["E5"].font = font_kpi_val
-    ws_resumen["E5"].alignment = align_center
-    ws_resumen["E5"].fill = kpi_fill
-    ws_resumen["E5"].number_format = "#,##0"
+    ws_resumen.merge_cells("D5:E5")
+    ws_resumen["D5"] = total_pacientes
+    ws_resumen["D5"].font = font_kpi_val
+    ws_resumen["D5"].alignment = align_center
+    ws_resumen["D5"].fill = kpi_fill
+    ws_resumen["D5"].number_format = "#,##0"
     
-    # Tarjeta KPI 3: Espera Promedio General
-    ws_resumen.merge_cells("H4:I4")
-    ws_resumen["H4"] = "TIEMPO ESPERA PROMEDIO GENERAL"
-    ws_resumen["H4"].font = font_kpi_lbl
-    ws_resumen["H4"].alignment = align_center
-    ws_resumen["H4"].fill = kpi_fill
+    # Fila 2 KPI: Tiempos Promedio Generales (Espera y Punción)
+    ws_resumen.merge_cells("B7:C7")
+    ws_resumen["B7"] = "TIEMPO ESPERA PROMEDIO GENERAL"
+    ws_resumen["B7"].font = font_kpi_lbl
+    ws_resumen["B7"].alignment = align_center
+    ws_resumen["B7"].fill = kpi_fill
     
-    ws_resumen.merge_cells("H5:I5")
-    ws_resumen["H5"] = promedio_espera_general if promedio_espera_general is not None else 0.0
-    ws_resumen["H5"].font = font_kpi_val
-    ws_resumen["H5"].alignment = align_center
-    ws_resumen["H5"].fill = kpi_fill
-    ws_resumen["H5"].number_format = "0.00"
+    ws_resumen.merge_cells("B8:C8")
+    ws_resumen["B8"] = promedio_espera_general if promedio_espera_general is not None else 0.0
+    ws_resumen["B8"].font = font_kpi_val
+    ws_resumen["B8"].alignment = align_center
+    ws_resumen["B8"].fill = kpi_fill
+    ws_resumen["B8"].number_format = "0.00"
     
-    ws_resumen["J5"] = "minutos"
-    ws_resumen["J5"].font = Font(name=font_family, size=10, italic=True)
-    ws_resumen["J5"].alignment = align_left
-    
-    # Tarjeta KPI 4: Punción Promedio General
     if promedio_puncion_general is not None:
-        ws_resumen.merge_cells("L4:M4")
-        ws_resumen["L4"] = "TIEMPO PUNCIÓN PROMEDIO GENERAL"
-        ws_resumen["L4"].font = font_kpi_lbl
-        ws_resumen["L4"].alignment = align_center
-        ws_resumen["L4"].fill = kpi_fill
+        ws_resumen.merge_cells("D7:E7")
+        ws_resumen["D7"] = "TIEMPO PUNCIÓN PROMEDIO GENERAL"
+        ws_resumen["D7"].font = font_kpi_lbl
+        ws_resumen["D7"].alignment = align_center
+        ws_resumen["D7"].fill = kpi_fill
         
-        ws_resumen.merge_cells("L5:M5")
-        ws_resumen["L5"] = promedio_puncion_general
-        ws_resumen["L5"].font = font_kpi_val
-        ws_resumen["L5"].alignment = align_center
-        ws_resumen["L5"].fill = kpi_fill
-        ws_resumen["L5"].number_format = "0.00"
-        
-        ws_resumen["N5"] = "minutos"
-        ws_resumen["N5"].font = Font(name=font_family, size=10, italic=True)
-        ws_resumen["N5"].alignment = align_left
+        ws_resumen.merge_cells("D8:E8")
+        ws_resumen["D8"] = promedio_puncion_general
+        ws_resumen["D8"].font = font_kpi_val
+        ws_resumen["D8"].alignment = align_center
+        ws_resumen["D8"].fill = kpi_fill
+        ws_resumen["D8"].number_format = "0.00"
 
-    for r in range(4, 6):
-        cols_to_border = [2, 3, 5, 6, 8, 9]
-        if promedio_puncion_general is not None:
-            cols_to_border.extend([12, 13])
-        for c in cols_to_border:
+    # Aplicar bordes a recuadros KPI
+    for r in [4, 5]:
+        for c in [2, 3, 4, 5]:
+            ws_resumen.cell(row=r, column=c).border = border_all
+    for r in [7, 8]:
+        cols = [2, 3, 4, 5] if promedio_puncion_general is not None else [2, 3]
+        for c in cols:
             ws_resumen.cell(row=r, column=c).border = border_all
             
     # Tabla Usuarios
-    ws_resumen["B8"] = "Promedio de Tiempo por Usuario de Extracción"
-    ws_resumen["B8"].font = font_section
+    ws_resumen["B11"] = "Promedio de Tiempo por Usuario de Extracción"
+    ws_resumen["B11"].font = font_section
     
-    r_idx = 10
+    r_idx = 13
     if not summary_user.empty:
         for c_idx, h in enumerate(summary_user.columns, start=2):
-            cell = ws_resumen.cell(row=9, column=c_idx, value=h)
+            cell = ws_resumen.cell(row=12, column=c_idx, value=h)
             cell.font = header_font
             cell.fill = header_fill
             cell.alignment = align_center
@@ -353,17 +346,18 @@ if uploaded_file is not None:
         st.success("¡Datos procesados y calculados con éxito a partir de las marcas de tiempo!")
         
         # Mostrar tarjetas métricas en la interfaz
+        st.subheader("📌 Indicadores Generales de Operación")
         if prom_punc is not None:
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Total Muestras Procesadas", f"{total_m:,}")
             c2.metric("Total Pacientes Atendidos", f"{total_p:,}")
-            c3.metric("Tiempo Espera Promedio", f"{prom_esp:.2f} min")
-            c4.metric("Tiempo Punción Promedio", f"{prom_punc:.2f} min")
+            c3.metric("Tiempo de Espera Promedio General", f"{prom_esp:.2f} min")
+            c4.metric("Tiempo Promedio de Punción General", f"{prom_punc:.2f} min")
         else:
             c1, c2, c3 = st.columns(3)
             c1.metric("Total Muestras Procesadas", f"{total_m:,}")
             c2.metric("Total Pacientes Atendidos", f"{total_p:,}")
-            c3.metric("Tiempo Espera Promedio", f"{prom_esp:.2f} min")
+            c3.metric("Tiempo de Espera Promedio General", f"{prom_esp:.2f} min")
         
         # Vistas previas en la app
         st.subheader("📊 Vista Previa de Tiempos por Usuario Extractor")
